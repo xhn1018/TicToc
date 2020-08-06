@@ -139,7 +139,7 @@ Status TransactionUtil::CheckKeysForConflicts(DBImpl* db_impl,
                                               const TransactionKeyMap& key_map,
                                               bool cache_only) {
   Status result;
-  uint32_t ttseq=0;
+  //uint32_t ttseq=0;
   for (auto& key_map_iter : key_map) {
     uint32_t cf_id = key_map_iter.first;
     
@@ -158,7 +158,7 @@ Status TransactionUtil::CheckKeysForConflicts(DBImpl* db_impl,
     // For each of the keys in this transaction, check to see if someone has
     // written to this key since the start of the transaction.
     
-    for (const auto& key_iter1 : keys) {
+    /*for (const auto& key_iter1 : keys) {
       //std::cout<<key_iter1.first<<std::endl;
       const auto w_ts = key_iter1.second.w_ts;
       const auto r_ts = key_iter1.second.r_ts;
@@ -181,14 +181,15 @@ Status TransactionUtil::CheckKeysForConflicts(DBImpl* db_impl,
            
         }
       }    
-    }
+    }*/
     //int k=ttseq;
     //printf("%d",k);
     //std::cout<<ttseq<<std::endl;
     for (const auto& key_iter : keys) {
       const auto& key = key_iter.first;
       const SequenceNumber key_seq = key_iter.second.seq;
-      std::cout<<"key ="<<key<<std::endl;
+      //std::cout<<"key ="<<key<<std::endl;
+      if(key_iter.second.exclusive==0)
       result = CheckKey(db_impl, sv, earliest_seq, key_seq, key, cache_only);
 
       if (!result.ok()) {

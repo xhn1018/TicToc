@@ -242,7 +242,7 @@ Status TransactionBaseImpl::Get(const ReadOptions& read_options,
                                 ColumnFamilyHandle* column_family,
                                 const Slice& key, std::string* value) {
   assert(value != nullptr);
-  std::cout<<"GETA"<<std::endl;
+  //std::cout<<"GETA"<<std::endl;
   PinnableSlice pinnable_val(value);
   assert(!pinnable_val.IsPinned());
   auto s = Get(read_options, column_family, key, &pinnable_val);
@@ -622,7 +622,8 @@ void TransactionBaseImpl::TrackKey(uint32_t cfh_id, const std::string& key,
                                    bool exclusive) {
   // Update map of all tracked keys for this transaction
   TrackKey(&tracked_keys_, cfh_id, key, seq, read_only, exclusive);
-
+  if(exclusive==0)  TrackKey(&read_keys_, cfh_id, key, seq, read_only, exclusive);
+  else  TrackKey(&write_keys_, cfh_id, key, seq, read_only, exclusive);
   if (save_points_ != nullptr && !save_points_->empty()) {
     // Update map of tracked keys in this SavePoint
     TrackKey(&save_points_->top().new_keys_, cfh_id, key, seq, read_only,

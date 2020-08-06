@@ -11,7 +11,7 @@
 #include <set>
 #include <string>
 #include <vector>
-
+#include<iostream>
 #include "db/column_family.h"
 #include "db/db_impl/db_impl.h"
 #include "rocksdb/comparator.h"
@@ -126,6 +126,30 @@ bool PessimisticTransaction::IsExpired() const {
   return false;
 }
 
+Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
+                                       const Slice& key, bool read_only,
+                                       bool exclusive, const bool do_validate,
+                                       const bool assume_tracked)  {
+    uint32_t cfh_id = GetColumnFamilyID(column_family);
+    if(!do_validate) std::cout<<"sd";
+    if(assume_tracked) std::cout<<"sd";
+    SetSnapshotIfNeeded();
+
+    SequenceNumber seq;
+    if (snapshot_) {
+      seq = snapshot_->GetSequenceNumber();
+    } else {
+      seq = db_->GetLatestSequenceNumber();
+    }
+
+    std::string key_str = key.ToString();
+
+    TrackKey(cfh_id, key_str, seq, read_only, exclusive);
+
+    // Always return OK. Confilct checking will happen at commit time.
+    return Status::OK();
+}
+
 WriteCommittedTxn::WriteCommittedTxn(TransactionDB* txn_db,
                                      const WriteOptions& write_options,
                                      const TransactionOptions& txn_options)
@@ -167,6 +191,31 @@ Status PessimisticTransaction::CommitBatch(WriteBatch* batch) {
   txn_db_impl_->UnLock(this, &keys_to_unlock);
 
   return s;
+}
+Status PessimisticTransaction::LockAll() {
+  const TransactionKeyMap& key_map = GetTrackedKeys();
+  Status result;
+
+  for (auto& key_map_iter : key_map) {
+    const auto& keys = key_map_iter.second;
+
+    for (const auto& key_iter : keys) {
+      const auto& key = key_iter.first;
+
+      Status s =
+          TryRealLock(nullptr, key, false /* read_only */, true /* exclusive */,0,0);
+
+      if (!result.ok()) {
+        break;
+      }
+    }
+
+    if (!result.ok()) {
+      break;
+    }
+  }
+
+  return result;
 }
 
 Status PessimisticTransaction::Prepare() {
@@ -346,18 +395,32 @@ Status PessimisticTransaction::Commit() {
 }
 
 Status WriteCommittedTxn::CommitWithoutPrepareInternal() {
-  uint64_t seq_used = kMaxSequenceNumber;
-  auto s =
-      db_impl_->WriteImpl(write_options_, GetWriteBatch()->GetWriteBatch(),
-                          /*callback*/ nullptr, /*log_used*/ nullptr,
-                          /*log_ref*/ 0, /*disable_memtable*/ false, &seq_used);
-  assert(!s.ok() || seq_used != kMaxSequenceNumber);
-  if (s.ok()) {
-    SetId(seq_used);
+ // uint64_t seq_used = kMaxSequenceNumber;
+ // std::cout<<"ok"<<std::endl;
+ Status s = LockAll();
+  if (!s.ok()) {
+    return s;
   }
+  PessimisticTransactionCallback callback(this);
+//  s = db_->Write(write_options_, GetWriteBatch()->GetWriteBatch());
+  DBImpl* db_impl = static_cast_with_check<DBImpl, DB>(db_->GetRootDB());
+
+  s = db_impl->WriteWithCallback(
+      write_options_, GetWriteBatch()->GetWriteBatch(), &callback);
   return s;
 }
+Status PessimisticTransaction::CheckTransactionForConflicts(DB* db) {
+    Status result;
 
+    auto db_impl = static_cast_with_check<DBImpl, DB>(db);
+
+    // Since we are on the write thread and do not want to block other writers,
+    // we will do a cache-only conflict check.  This can result in TryAgain
+    // getting returned if there is not sufficient memtable history to check
+    // for conflicts.
+    return TransactionUtil::CheckKeysForConflicts(db_impl, GetReadKeys(),
+                                                  true /* cache_only */);
+}
 Status WriteCommittedTxn::CommitBatchInternal(WriteBatch* batch, size_t) {
   uint64_t seq_used = kMaxSequenceNumber;
   auto s = db_impl_->WriteImpl(write_options_, batch, /*callback*/ nullptr,
@@ -537,20 +600,18 @@ Status PessimisticTransaction::LockBatch(WriteBatch* batch,
 // If check_shapshot is true and this transaction has a snapshot set,
 // this key will only be locked if there have been no writes to this key since
 // the snapshot time.
-Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
+Status PessimisticTransaction::TryRealLock(ColumnFamilyHandle* column_family,
                                        const Slice& key, bool read_only,
                                        bool exclusive, const bool do_validate,
                                        const bool assume_tracked) {
-  assert(!assume_tracked || !do_validate);
+
+ 
   Status s;
-  if (UNLIKELY(skip_concurrency_control_)) {
-    return s;
-  }
+  
   uint32_t cfh_id = GetColumnFamilyID(column_family);
   std::string key_str = key.ToString();
   bool previously_locked;
-  bool lock_upgrade = false;
-
+  bool lock_upgrade = read_only;
   // lock this key if this transactions hasn't already locked it
   SequenceNumber tracked_at_seq = kMaxSequenceNumber;
 
@@ -558,6 +619,7 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
   const auto tracked_keys_cf = tracked_keys.find(cfh_id);
   if (tracked_keys_cf == tracked_keys.end()) {
     previously_locked = false;
+    
   } else {
     auto iter = tracked_keys_cf->second.find(key_str);
     if (iter == tracked_keys_cf->second.end()) {
@@ -574,7 +636,7 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
   // Lock this key if this transactions hasn't already locked it or we require
   // an upgrade.
   if (!previously_locked || lock_upgrade) {
-    s = txn_db_impl_->TryLock(this, cfh_id, key_str, exclusive);
+   s = txn_db_impl_->TryLock(this, cfh_id, key_str, exclusive);
   }
 
   SetSnapshotIfNeeded();
@@ -610,8 +672,9 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
     // If we already have validated an earilier snapshot it must has been
     // reflected in tracked_at_seq and ValidateSnapshot will return OK.
     if (s.ok()) {
-      s = ValidateSnapshot(column_family, key, &tracked_at_seq);
 
+      s = ValidateSnapshot(column_family, key, &tracked_at_seq);
+      
       if (!s.ok()) {
         // Failed to validate key
         if (!previously_locked) {
@@ -642,7 +705,8 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
     // setting, and at a lower sequence number, so skipping here should be
     // safe.
     if (!assume_tracked) {
-      TrackKey(cfh_id, key_str, tracked_at_seq, read_only, exclusive);
+     // TrackKey(cfh_id, key_str, tracked_at_seq, read_only, exclusive);
+      
     } else {
 #ifndef NDEBUG
       assert(tracked_keys_cf->second.count(key_str) > 0);

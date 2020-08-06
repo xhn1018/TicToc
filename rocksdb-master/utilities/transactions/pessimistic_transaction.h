@@ -50,7 +50,7 @@ class PessimisticTransaction : public TransactionBaseImpl {
                     const TransactionOptions& txn_options);
 
   Status Prepare() override;
-
+  
   Status Commit() override;
 
   // It is basically Commit without going through Prepare phase. The write batch
@@ -59,9 +59,11 @@ class PessimisticTransaction : public TransactionBaseImpl {
   Status CommitBatch(WriteBatch* batch);
 
   Status Rollback() override;
-
+  Status TryRealLock(ColumnFamilyHandle* column_family,
+                                       const Slice& key, bool read_only,
+                                       bool exclusive, const bool do_validate,
+                                       const bool assume_tracked);
   Status RollbackToSavePoint() override;
-
   Status SetName(const TransactionName& name) override;
 
   // Generate a new unique transaction identifier
@@ -144,24 +146,25 @@ class PessimisticTransaction : public TransactionBaseImpl {
   Status TryLock(ColumnFamilyHandle* column_family, const Slice& key,
                  bool read_only, bool exclusive, const bool do_validate = true,
                  const bool assume_tracked = false) override;
-
+  
   void Clear() override;
 
   PessimisticTransactionDB* txn_db_impl_;
   DBImpl* db_impl_;
-
+  Status LockAll();
   // If non-zero, this transaction should not be committed after this time (in
   // microseconds according to Env->NowMicros())
   uint64_t expiration_time_;
 
  private:
+  friend class PessimisticTransactionCallback;
   friend class TransactionTest_ValidateSnapshotTest_Test;
   // Used to create unique ids for transactions.
   static std::atomic<TransactionID> txn_id_counter_;
 
   // Unique ID for this transaction
   TransactionID txn_id_;
-
+  Status CheckTransactionForConflicts(DB* db);
   // IDs for the transactions that are blocking the current transaction.
   //
   // empty if current transaction is not waiting.
@@ -199,6 +202,20 @@ class PessimisticTransaction : public TransactionBaseImpl {
 
   void UnlockGetForUpdate(ColumnFamilyHandle* column_family,
                           const Slice& key) override;
+};
+class PessimisticTransactionCallback : public WriteCallback {
+public:
+  explicit PessimisticTransactionCallback(PessimisticTransaction* txn)
+      : txn_(txn) {}
+
+  Status Callback(DB* db) override {
+    return txn_->CheckTransactionForConflicts(db);
+  }
+
+  bool AllowWriteBatching() override { return true; }
+
+private:
+  PessimisticTransaction* txn_;
 };
 
 class WriteCommittedTxn : public PessimisticTransaction {
