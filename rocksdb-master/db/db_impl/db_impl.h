@@ -138,7 +138,7 @@ class DBImpl : public DB {
 
   using DB::Resume;
   virtual Status Resume() override;
-
+ 
   using DB::Put;
   virtual Status Put(const WriteOptions& options,
                      ColumnFamilyHandle* column_family, const Slice& key,
@@ -375,7 +375,12 @@ class DBImpl : public DB {
       std::unique_ptr<LogFile>* current_log_file) override;
   virtual Status GetCreationTimeOfOldestFile(
       uint64_t* creation_time) override;
-
+  Status DBImpl::GetLatestwtsForKey(SuperVersion* sv, const Slice& key,
+                                       bool cache_only,
+                                       SequenceNumber lower_bound_seq,
+                                       SequenceNumber* seq,
+                                       bool* found_record_for_key,
+                                       bool* is_blob_index);
   virtual Status GetUpdatesSince(
       SequenceNumber seq_number, std::unique_ptr<TransactionLogIterator>* iter,
       const TransactionLogIterator::ReadOptions& read_options =

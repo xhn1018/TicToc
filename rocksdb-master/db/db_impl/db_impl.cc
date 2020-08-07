@@ -4083,6 +4083,122 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
   return s;
 }
 
+Status DBImpl::GetLatestwtsForKey(SuperVersion* sv, const Slice& key,
+                                       bool cache_only,
+                                       SequenceNumber lower_bound_seq,
+                                       SequenceNumber* seq,
+                                       bool* found_record_for_key,
+                                       bool* is_blob_index) {
+  Status s;
+  MergeContext merge_context;
+  SequenceNumber max_covering_tombstone_seq = 0;
+
+  ReadOptions read_options;
+  SequenceNumber current_seq = versions_->LastSequence();
+  LookupKey lkey(key, current_seq);
+
+  *seq = kMaxSequenceNumber;
+  *found_record_for_key = false;
+
+  // Check if there is a record for this key in the latest memtable
+  sv->mem->Get(lkey, nullptr, nullptr, &s, &merge_context,
+               &max_covering_tombstone_seq, seq, read_options,
+               nullptr /*read_callback*/, is_blob_index);
+
+  if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+    // unexpected error reading memtable.
+    ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                    "Unexpected status returned from MemTable::Get: %s\n",
+                    s.ToString().c_str());
+
+    return s;
+  }
+
+  if (*seq != kMaxSequenceNumber) {
+    // Found a sequence number, no need to check immutable memtables
+    *found_record_for_key = true;
+    return Status::OK();
+  }
+
+  SequenceNumber lower_bound_in_mem = sv->mem->GetEarliestSequenceNumber();
+  if (lower_bound_in_mem != kMaxSequenceNumber &&
+      lower_bound_in_mem < lower_bound_seq) {
+    *found_record_for_key = false;
+    return Status::OK();
+  }
+
+  // Check if there is a record for this key in the immutable memtables
+  sv->imm->Get(lkey, nullptr, nullptr, &s, &merge_context,
+               &max_covering_tombstone_seq, seq, read_options,
+               nullptr /*read_callback*/, is_blob_index);
+
+  if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+    // unexpected error reading memtable.
+    ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                    "Unexpected status returned from MemTableList::Get: %s\n",
+                    s.ToString().c_str());
+
+    return s;
+  }
+
+  if (*seq != kMaxSequenceNumber) {
+    // Found a sequence number, no need to check memtable history
+    *found_record_for_key = true;
+    return Status::OK();
+  }
+
+  SequenceNumber lower_bound_in_imm = sv->imm->GetEarliestSequenceNumber();
+  if (lower_bound_in_imm != kMaxSequenceNumber &&
+      lower_bound_in_imm < lower_bound_seq) {
+    *found_record_for_key = false;
+    return Status::OK();
+  }
+
+  // Check if there is a record for this key in the immutable memtables
+  sv->imm->GetFromHistory(lkey, nullptr, nullptr, &s, &merge_context,
+                          &max_covering_tombstone_seq, seq, read_options,
+                          is_blob_index);
+
+  if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+    // unexpected error reading memtable.
+    ROCKS_LOG_ERROR(
+        immutable_db_options_.info_log,
+        "Unexpected status returned from MemTableList::GetFromHistory: %s\n",
+        s.ToString().c_str());
+
+    return s;
+  }
+
+  if (*seq != kMaxSequenceNumber) {
+    // Found a sequence number, no need to check SST files
+    *found_record_for_key = true;
+    return Status::OK();
+  }
+
+  // We could do a sv->imm->GetEarliestSequenceNumber(/*include_history*/ true)
+  // check here to skip the history if possible. But currently the caller
+  // already does that. Maybe we should move the logic here later.
+
+  // TODO(agiardullo): possible optimization: consider checking cached
+  // SST files if cache_only=true?
+  if (!cache_only) {
+    // Check tables
+    sv->current->Get(read_options, lkey, nullptr, nullptr, &s, &merge_context,
+                     &max_covering_tombstone_seq, nullptr /* value_found */,
+                     found_record_for_key, seq, nullptr /*read_callback*/,
+                     is_blob_index);
+
+    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+      // unexpected error reading SST files
+      ROCKS_LOG_ERROR(immutable_db_options_.info_log,
+                      "Unexpected status returned from Version::Get: %s\n",
+                      s.ToString().c_str());
+    }
+  }
+
+  return s;
+}
+
 Status DBImpl::IngestExternalFile(
     ColumnFamilyHandle* column_family,
     const std::vector<std::string>& external_files,

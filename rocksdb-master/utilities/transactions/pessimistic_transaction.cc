@@ -411,9 +411,38 @@ Status WriteCommittedTxn::CommitWithoutPrepareInternal() {
 }
 Status PessimisticTransaction::CheckTransactionForConflicts(DB* db) {
     Status result;
-
+    SequenceNumber ttseq=0;
     auto db_impl = static_cast_with_check<DBImpl, DB>(db);
-
+    for (auto& key_map_iter : GetTrackedKeys()) { 
+    const auto& keys = key_map_iter.second;
+    for (const auto& key_iter1 : keys) {
+      //std::cout<<key_iter1.first<<std::endl;
+      const auto w_ts = key_iter1.second.w_ts;
+      const auto r_ts = key_iter1.second.r_ts;
+      //std::cout<<"3"<<std::endl;
+      if(key_iter1.second.exclusive==0){
+        std::cout<<"read::"<<key_iter1.first<<std::endl;
+        if(ttseq<w_ts){
+        
+           //std::cout<<"1"<<std::endl;
+           ttseq = w_ts;
+           
+        }
+      }
+      else{
+        //std::cout<<"2"<<std::endl;
+        std::cout<<"write::"<<key_iter1.first<<std::endl;
+        //std::cout<<""<<std::endl;
+        if(ttseq<r_ts+1){
+           ttseq = r_ts+1;
+           
+        }
+      }    
+     }
+    }
+    //int k=ttseq;
+    //printf("%d",k);
+    //std::cout<<ttseq<<std::endl;
     // Since we are on the write thread and do not want to block other writers,
     // we will do a cache-only conflict check.  This can result in TryAgain
     // getting returned if there is not sufficient memtable history to check
@@ -599,7 +628,6 @@ Status PessimisticTransaction::LockBatch(WriteBatch* batch,
 // Returns OK if the key has been successfully locked.  Non-ok, otherwise.
 // If check_shapshot is true and this transaction has a snapshot set,
 // this key will only be locked if there have been no writes to this key since
-// the snapshot time.
 Status PessimisticTransaction::TryRealLock(ColumnFamilyHandle* column_family,
                                        const Slice& key, bool read_only,
                                        bool exclusive, const bool do_validate,

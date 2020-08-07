@@ -26,8 +26,8 @@ struct TransactionKeyMapInfo {
 
   uint32_t num_writes;
   uint32_t num_reads;
-  uint32_t w_ts;
-  uint32_t r_ts;
+  SequenceNumber w_ts;
+  SequenceNumber r_ts;
   bool exclusive;
 
   explicit TransactionKeyMapInfo(SequenceNumber seq_no)
@@ -82,6 +82,7 @@ class TransactionUtil {
   static Status CheckKeysForConflicts(DBImpl* db_impl,
                                       const TransactionKeyMap& keys,
                                       bool cache_only);
+
 
  private:
   // If `snap_checker` == nullptr, writes are always commited in sequence number

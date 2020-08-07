@@ -28,9 +28,9 @@ namespace ROCKSDB_NAMESPACE {
 class TransactionBaseImpl : public Transaction {
  public:
   TransactionBaseImpl(DB* db, const WriteOptions& write_options);
-
+ 
   virtual ~TransactionBaseImpl();
-
+  SequenceNumber TTseq;
   // Remove pending operations queued in this transaction.
   virtual void Clear();
 
@@ -238,7 +238,7 @@ class TransactionBaseImpl : public Transaction {
   const TransactionKeyMap& GetTrackedKeys() const { return tracked_keys_; }
   const TransactionKeyMap& GetReadKeys() const { return read_keys_; }
   const TransactionKeyMap& GetWriteKeys() const { return write_keys_; }
-
+  //const uint32_t& GetSeq() const { return TTseq; }
   WriteOptions* GetWriteOptions() override { return &write_options_; }
 
   void SetWriteOptions(const WriteOptions& write_options) override {
@@ -303,7 +303,7 @@ class TransactionBaseImpl : public Transaction {
   uint64_t num_puts_ = 0;
   uint64_t num_deletes_ = 0;
   uint64_t num_merges_ = 0;
-
+  
   struct SavePoint {
     std::shared_ptr<const Snapshot> snapshot_;
     bool snapshot_needed_ = false;
@@ -338,6 +338,7 @@ class TransactionBaseImpl : public Transaction {
   TransactionKeyMap tracked_keys_;
   TransactionKeyMap read_keys_;
    TransactionKeyMap write_keys_;
+
   // Stack of the Snapshot saved at each save point. Saved snapshots may be
   // nullptr if there was no snapshot at the time SetSavePoint() was called.
   std::unique_ptr<std::stack<TransactionBaseImpl::SavePoint,

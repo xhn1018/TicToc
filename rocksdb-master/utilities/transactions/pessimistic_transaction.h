@@ -150,6 +150,7 @@ class PessimisticTransaction : public TransactionBaseImpl {
   void Clear() override;
 
   PessimisticTransactionDB* txn_db_impl_;
+  Status CheckTransactionForConflicts1(DB* db);
   DBImpl* db_impl_;
   Status LockAll();
   // If non-zero, this transaction should not be committed after this time (in
@@ -165,6 +166,8 @@ class PessimisticTransaction : public TransactionBaseImpl {
   // Unique ID for this transaction
   TransactionID txn_id_;
   Status CheckTransactionForConflicts(DB* db);
+  
+
   // IDs for the transactions that are blocking the current transaction.
   //
   // empty if current transaction is not waiting.
