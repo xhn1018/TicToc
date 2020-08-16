@@ -26,8 +26,8 @@ struct TransactionKeyMapInfo {
 
   uint32_t num_writes;
   uint32_t num_reads;
-  SequenceNumber w_ts;
-  SequenceNumber r_ts;
+  uint32_t w_ts;
+  uint32_t r_ts;
   bool exclusive;
 
   explicit TransactionKeyMapInfo(SequenceNumber seq_no)
@@ -70,6 +70,7 @@ class TransactionUtil {
       ReadCallback* snap_checker = nullptr,
       SequenceNumber min_uncommitted = kMaxSequenceNumber);
 
+
   // For each key,SequenceNumber pair in the TransactionKeyMap, this function
   // will verify there have been no writes to the key in the db since that
   // sequence number.
@@ -82,7 +83,6 @@ class TransactionUtil {
   static Status CheckKeysForConflicts(DBImpl* db_impl,
                                       const TransactionKeyMap& keys,
                                       bool cache_only);
-
 
  private:
   // If `snap_checker` == nullptr, writes are always commited in sequence number
@@ -98,6 +98,11 @@ class TransactionUtil {
                          const std::string& key, bool cache_only,
                          ReadCallback* snap_checker = nullptr,
                          SequenceNumber min_uncommitted = kMaxSequenceNumber);
+    static Status CheckKey2(DBImpl* db_impl, SuperVersion* sv,
+                         SequenceNumber earliest_seq, SequenceNumber snap_seq,
+                         const std::string& key, bool cache_only,
+                         
+                          SequenceNumber commit_ts,ReadCallback* snap_checker = nullptr,SequenceNumber min_uncommitted = kMaxSequenceNumber);
 };
 
 }  // namespace ROCKSDB_NAMESPACE

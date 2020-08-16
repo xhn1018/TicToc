@@ -614,9 +614,10 @@ void TransactionLockMgr::UnLockKey(const PessimisticTransaction* txn,
   } else {
     // This key is either not locked or locked by someone else.  This should
     // only happen if the unlocking transaction has expired.
-    assert(txn->GetExpirationTime() > 0 &&
-           txn->GetExpirationTime() < env->NowMicros());
-  }
+   // assert(txn->GetExpirationTime() > 0 &&
+        //   txn->GetExpirationTime() < env->NowMicros());
+   if(env->NowMicros()<1) printf("111");
+   }
 }
 
 void TransactionLockMgr::UnLock(PessimisticTransaction* txn,

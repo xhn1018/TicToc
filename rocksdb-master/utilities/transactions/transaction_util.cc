@@ -119,8 +119,23 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
     Status s = db_impl->GetLatestSequenceForKey(sv, key, !need_to_read_sst,
                                                 lower_bound_seq, &seq,
                                                 &found_record_for_key);
+
+
+    SequenceNumber writeseq=0; 
+    SequenceNumber readseq=0;
+    UnPackSequence(&writeseq,&readseq,seq);
+//    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+ //     result = s;
+ //   } else if (found_record_for_key) {
+ //     bool write_conflict = snap_checker == nullptr
+     //                           ? snap_seq < seq
+     //                           : !snap_checker->IsVisible(seq);
+ //     if (write_conflict) {
+        result = Status::Busy();
+    //  }
+   // }
     
-    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+     if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
       result = s;
     } else if (found_record_for_key) {
       bool write_conflict = snap_checker == nullptr
@@ -130,6 +145,117 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
         result = Status::Busy();
       }
     }
+    
+  }
+
+  return result;
+}
+
+
+
+
+
+Status TransactionUtil::CheckKey2(DBImpl* db_impl, SuperVersion* sv,
+                                 SequenceNumber earliest_seq,
+                                 SequenceNumber snap_seq,
+                                 const std::string& key, bool cache_only,
+                                 SequenceNumber commit_ts, ReadCallback* snap_checker,
+                                 SequenceNumber min_uncommitted) {
+  // When `min_uncommitted` is provided, keys are not always committed
+  // in sequence number order, and `snap_checker` is used to check whether
+  // specific sequence number is in the database is visible to the transaction.
+  // So `snap_checker` must be provided.
+  assert(min_uncommitted == kMaxSequenceNumber || snap_checker != nullptr);
+
+  Status result;
+  bool need_to_read_sst = false;
+  if(commit_ts ==0)  printf("asd");
+  // Since it would be too slow to check the SST files, we will only use
+  // the memtables to check whether there have been any recent writes
+  // to this key after it was accessed in this transaction.  But if the
+  // Memtables do not contain a long enough history, we must fail the
+  // transaction.
+  if (earliest_seq == kMaxSequenceNumber) {
+    // The age of this memtable is unknown.  Cannot rely on it to check
+    // for recent writes.  This error shouldn't happen often in practice as
+    // the Memtable should have a valid earliest sequence number except in some
+    // corner cases (such as error cases during recovery).
+    need_to_read_sst = true;
+
+    if (cache_only) {
+      result = Status::TryAgain(
+          "Transaction could not check for conflicts as the MemTable does not "
+          "contain a long enough history to check write at SequenceNumber: ",
+          ToString(snap_seq));
+    }
+  } else if (snap_seq < earliest_seq || min_uncommitted <= earliest_seq) {
+    // Use <= for min_uncommitted since earliest_seq is actually the largest sec
+    // before this memtable was created
+    need_to_read_sst = true;
+
+    if (cache_only) {
+      // The age of this memtable is too new to use to check for recent
+      // writes.
+      char msg[300];
+      snprintf(msg, sizeof(msg),
+               "Transaction could not check for conflicts for operation at "
+               "SequenceNumber %" PRIu64
+               " as the MemTable only contains changes newer than "
+               "SequenceNumber %" PRIu64
+               ".  Increasing the value of the "
+               "max_write_buffer_size_to_maintain option could reduce the "
+               "frequency "
+               "of this error.",
+               snap_seq, earliest_seq);
+      result = Status::TryAgain(msg);
+    }
+  }
+
+  if (result.ok()) {
+    SequenceNumber seq = kMaxSequenceNumber;
+    bool found_record_for_key = false;
+
+    // When min_uncommitted == kMaxSequenceNumber, writes are committed in
+    // sequence number order, so only keys larger than `snap_seq` can cause
+    // conflict.
+    // When min_uncommitted != kMaxSequenceNumber, keys lower than
+    // min_uncommitted will not triggered conflicts, while keys larger than
+    // min_uncommitted might create conflicts, so we need  to read them out
+    // from the DB, and call callback to snap_checker to determine. So only
+    // keys lower than min_uncommitted can be skipped.
+    SequenceNumber lower_bound_seq =
+        (min_uncommitted == kMaxSequenceNumber) ? snap_seq : min_uncommitted;
+    Status s = db_impl->GetLatestSequenceForKey(sv, key, !need_to_read_sst,
+                                                lower_bound_seq, &seq,
+                                                &found_record_for_key);
+
+
+    SequenceNumber writeseq=0; 
+    SequenceNumber readseq=0;
+    SequenceNumber snapwriteseq=0; 
+    SequenceNumber snapreadseq=0;
+    UnPackSequence(&writeseq,&readseq,seq);
+    UnPackSequence(&snapwriteseq,&snapreadseq,snap_seq);
+//    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+ //     result = s;
+ //   } else if (found_record_for_key) {
+ //     bool write_conflict = snap_checker == nullptr
+     //                           ? snap_seq < seq
+     //                           : !snap_checker->IsVisible(seq);
+ //     if (write_conflict) {
+        result = Status::Busy();
+    //  }
+   // }
+    
+     if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+      result = s;
+    } else if (snapreadseq<commit_ts) {
+      bool write_conflict = (snapwriteseq!=writeseq)||(readseq<=commit_ts);
+      if (write_conflict) {
+        result = Status::Busy();
+      }
+    }
+    
   }
 
   return result;

@@ -31,7 +31,22 @@ uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(IsExtendedValueType(t));
   return (seq << 8) | t;
 }
+uint64_t PackSequence(uint64_t writeseq,uint64_t readseq){
+  assert(writeseq <= kMaxSequenceNumber);
+  assert(readseq < kMaxSequenceNumber);
+  uint64_t seq =readseq-writeseq;
+  return (writeseq<<12)|seq ;
+}
 
+void UnPackSequence(uint64_t *writeseq,uint64_t *readseq,uint64_t seq){
+    *writeseq = seq>>12;
+    *readseq = seq&((0x1ull<<12)-1);
+}
+
+uint64_t UnPackwtsSequence(uint64_t seq){
+    uint64_t writeseq = seq>>12;
+    return writeseq;
+}
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
     case kTypeValue:

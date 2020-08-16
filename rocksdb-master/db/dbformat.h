@@ -123,7 +123,9 @@ inline size_t InternalKeyEncodingLength(const ParsedInternalKey& key) {
 
 // Pack a sequence number and a ValueType into a uint64_t
 extern uint64_t PackSequenceAndType(uint64_t seq, ValueType t);
-
+uint64_t PackSequence(uint64_t writeseq,uint64_t readseq);
+void UnPackSequence(uint64_t *writeseq,uint64_t *readseq,uint64_t seq);
+uint64_t UnPackwtsSequence(uint64_t seq);
 // Given the result of PackSequenceAndType, store the sequence number in *seq
 // and the ValueType in *t.
 extern void UnPackSequenceAndType(uint64_t packed, uint64_t* seq, ValueType* t);
