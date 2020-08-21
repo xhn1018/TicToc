@@ -421,7 +421,7 @@ Status PessimisticTransaction::CheckTransactionForConflicts(DB* db) {
       const auto r_ts = key_iter1.second.r_ts;
       //std::cout<<"3"<<std::endl;
       if(key_iter1.second.exclusive==0){
-        std::cout<<"read::"<<key_iter1.first<<std::endl;
+        //std::cout<<"read::"<<key_iter1.first<<std::endl;
         if(ttseq<w_ts){
         
            //std::cout<<"1"<<std::endl;
@@ -431,7 +431,7 @@ Status PessimisticTransaction::CheckTransactionForConflicts(DB* db) {
       }
       else{
         //std::cout<<"2"<<std::endl;
-        std::cout<<"write::"<<key_iter1.first<<std::endl;
+        //std::cout<<"write::"<<key_iter1.first<<std::endl;
         //std::cout<<""<<std::endl;
         if(ttseq<r_ts+1){
            ttseq = r_ts+1;
@@ -440,6 +440,9 @@ Status PessimisticTransaction::CheckTransactionForConflicts(DB* db) {
       }    
      }
     }
+    commit_time_batch_.TictocSequence=ttseq;
+  // std:: cout<<ttseq<<std::endl;
+    TTseq = ttseq;
     //int k=ttseq;
     //printf("%d",k);
     //std::cout<<ttseq<<std::endl;
@@ -447,8 +450,8 @@ Status PessimisticTransaction::CheckTransactionForConflicts(DB* db) {
     // we will do a cache-only conflict check.  This can result in TryAgain
     // getting returned if there is not sufficient memtable history to check
     // for conflicts.
-    return TransactionUtil::CheckKeysForConflicts(db_impl, GetReadKeys(),
-                                                  true /* cache_only */);
+    return TransactionUtil::CheckKeysForConflicts2(db_impl, GetReadKeys(),
+                                                  true /* cache_only */,TTseq);
 }
 Status WriteCommittedTxn::CommitBatchInternal(WriteBatch* batch, size_t) {
   uint64_t seq_used = kMaxSequenceNumber;

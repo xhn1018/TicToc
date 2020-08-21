@@ -1,4 +1,4 @@
-// Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
+// Copyright (c) 2011-present, Facebook, Inc.  All rights reservtted.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
@@ -236,9 +236,10 @@ class TransactionBaseImpl : public Transaction {
   // Get list of keys in this transaction that must not have any conflicts
   // with writes in other transactions.
   const TransactionKeyMap& GetTrackedKeys() const { return tracked_keys_; }
+  const SequenceNumber& GetST() const { return TTseq; }
   const TransactionKeyMap& GetReadKeys() const { return read_keys_; }
   const TransactionKeyMap& GetWriteKeys() const { return write_keys_; }
-  //const uint32_t& GetSeq() const { return TTseq; }
+  //const uint32_t& GetSeq() const { return TTseq; }se
   WriteOptions* GetWriteOptions() override { return &write_options_; }
 
   void SetWriteOptions(const WriteOptions& write_options) override {
@@ -344,12 +345,12 @@ class TransactionBaseImpl : public Transaction {
   std::unique_ptr<std::stack<TransactionBaseImpl::SavePoint,
                              autovector<TransactionBaseImpl::SavePoint>>>
       save_points_;
-
+  WriteBatch commit_time_batch_; 
  private:
   friend class WritePreparedTxn;
   // Extra data to be persisted with the commit. Note this is only used when
   // prepare phase is not skipped.
-  WriteBatch commit_time_batch_;
+  
 
   // If true, future Put/Merge/Deletes will be indexed in the
   // WriteBatchWithIndex.

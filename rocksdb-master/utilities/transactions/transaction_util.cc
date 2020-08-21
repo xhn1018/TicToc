@@ -46,6 +46,7 @@ Status TransactionUtil::CheckKeyForConflicts(
   return result;
 }
 
+
 Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
                                  SequenceNumber earliest_seq,
                                  SequenceNumber snap_seq,
@@ -124,16 +125,16 @@ Status TransactionUtil::CheckKey(DBImpl* db_impl, SuperVersion* sv,
     SequenceNumber writeseq=0; 
     SequenceNumber readseq=0;
     UnPackSequence(&writeseq,&readseq,seq);
-//    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
- //     result = s;
- //   } else if (found_record_for_key) {
- //     bool write_conflict = snap_checker == nullptr
-     //                           ? snap_seq < seq
-     //                           : !snap_checker->IsVisible(seq);
- //     if (write_conflict) {
+    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
+      result = s;
+    } else if (found_record_for_key) {
+      bool write_conflict = snap_checker == nullptr
+                                ? snap_seq < seq
+                                : !snap_checker->IsVisible(seq);
+      if (write_conflict) {
         result = Status::Busy();
-    //  }
-   // }
+      }
+   }
     
      if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
       result = s;
@@ -164,12 +165,13 @@ Status TransactionUtil::CheckKey2(DBImpl* db_impl, SuperVersion* sv,
   // When `min_uncommitted` is provided, keys are not always committed
   // in sequence number order, and `snap_checker` is used to check whether
   // specific sequence number is in the database is visible to the transaction.
-  // So `snap_checker` must be provided.
-  assert(min_uncommitted == kMaxSequenceNumber || snap_checker != nullptr);
+  // So `snap_checker` must be provided. 
 
+  assert(min_uncommitted == kMaxSequenceNumber || snap_checker != nullptr);
+  if(snap_checker!=NULL) printf("sdd");
   Status result;
   bool need_to_read_sst = false;
-  if(commit_ts ==0)  printf("asd");
+ // if(commit_ts ==0)  printf("asd");
   // Since it would be too slow to check the SST files, we will only use
   // the memtables to check whether there have been any recent writes
   // to this key after it was accessed in this transaction.  But if the
@@ -236,14 +238,16 @@ Status TransactionUtil::CheckKey2(DBImpl* db_impl, SuperVersion* sv,
     SequenceNumber snapreadseq=0;
     UnPackSequence(&writeseq,&readseq,seq);
     UnPackSequence(&snapwriteseq,&snapreadseq,snap_seq);
+    snapreadseq=snapwriteseq+snapreadseq;
+    readseq=writeseq+readseq;
 //    if (!(s.ok() || s.IsNotFound() || s.IsMergeInProgress())) {
- //     result = s;
+ //     result = s;s
  //   } else if (found_record_for_key) {
  //     bool write_conflict = snap_checker == nullptr
      //                           ? snap_seq < seq
      //                           : !snap_checker->IsVisible(seq);
  //     if (write_conflict) {
-        result = Status::Busy();
+   //     result = Status::Busy();
     //  }
    // }
     
@@ -335,6 +339,83 @@ Status TransactionUtil::CheckKeysForConflicts(DBImpl* db_impl,
 
 }
 
+
+
+
+Status TransactionUtil::CheckKeysForConflicts2(DBImpl* db_impl,
+                                              const TransactionKeyMap& key_map,
+                                              bool cache_only, SequenceNumber s) {
+  Status result;
+  //uint32_t ttseq=0;
+  for (auto& key_map_iter : key_map) {
+    uint32_t cf_id = key_map_iter.first;
+    
+    const auto& keys = key_map_iter.second;
+
+    SuperVersion* sv = db_impl->GetAndRefSuperVersion(cf_id);
+    if (sv == nullptr) {
+      result = Status::InvalidArgument("Could not access column family " +
+                                       ToString(cf_id));
+      break;
+    }
+
+    SequenceNumber earliest_seq =
+        db_impl->GetEarliestMemTableSequenceNumber(sv, true);
+
+    // For each of the keys in this transaction, check to see if someone has
+    // written to this key since the start of the transaction.
+    
+  //  for (const auto& key_iter1 : keys) {
+      //std::cout<<key_iter1.first<<std::endl;
+   //   const auto w_ts = key_iter1.second.w_ts;
+  //    const auto r_ts = key_iter1.second.r_ts;
+      //std::cout<<"3"<<std::endl;
+   //   if(key_iter1.second.exclusive==0){
+    //    std::cout<<"read::"<<key_iter1.first<<std::endl;
+    //    if(ttseq<w_ts){
+        
+           //std::cout<<"1"<<std::endl;
+    //       ttseq = w_ts;
+           
+     //   }
+    //  }
+    //  else{
+     //   //std::cout<<"2"<<std::endl;
+   //     std::cout<<"write::"<<key_iter1.first<<std::endl;
+        //std::cout<<""<<std::endl;
+  //      if(ttseq<r_ts+1){
+ //          ttseq = r_ts+1;
+//           
+  //      }
+  //    }    
+  //  }
+
+    //int k=ttseq;
+    //printf("%d",k);
+    //std::cout<<ttseq<<std::endl;
+    for (const auto& key_iter : keys) {
+      const auto& key = key_iter.first;
+      const SequenceNumber key_seq = key_iter.second.seq;
+      //std::cout<<"key ="<<key<<std::endl;
+      if(key_iter.second.exclusive==0)
+      result = CheckKey2(db_impl, sv, earliest_seq, key_seq, key, cache_only,s);
+
+      if (!result.ok()) {
+        break;
+      }
+    }
+
+    db_impl->ReturnAndCleanupSuperVersion(cf_id, sv);
+
+    if (!result.ok()) {
+      break;
+    }
+  
+
+}
+  return result;
+
+}
 }
 
 #endif  // ROCKSDB_LITE

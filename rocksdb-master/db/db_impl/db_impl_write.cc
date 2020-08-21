@@ -14,7 +14,7 @@
 #include "monitoring/perf_context_imp.h"
 #include "options/options_helper.h"
 #include "test_util/sync_point.h"
-
+#include <iostream>
 namespace ROCKSDB_NAMESPACE {
 // Convenience methods
 Status DBImpl::Put(const WriteOptions& o, ColumnFamilyHandle* column_family,
@@ -70,6 +70,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
                          size_t batch_cnt,
                          PreReleaseCallback* pre_release_callback) {
   assert(!seq_per_batch_ || batch_cnt != 0);
+ // *seq_used=my_batch->TictocSequence;
   if (my_batch == nullptr) {
     return Status::Corruption("Batch is nullptr!");
   }
@@ -126,6 +127,9 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
                                      // every key is a sub-batch consuming a seq
                                      : WriteBatchInternal::Count(my_batch);
     uint64_t seq;
+    //seq = my_batch->TictocSequence;
+    //std::cout<<"1"<<std::endl;
+   // seq =my_batch->TictocSequence;
     // Use a write thread to i) optimize for WAL write, ii) publish last
     // sequence in in increasing order, iii) call pre_release_callback serially
     status = WriteImplWALOnly(&write_thread_, write_options, my_batch, callback,
@@ -324,7 +328,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       if (status.ok() && !write_options.disableWAL) {
         PERF_TIMER_GUARD(write_wal_time);
         io_s = WriteToWAL(write_group, log_writer, log_used, need_log_sync,
-                          need_log_dir_sync, last_sequence + 1);
+                          need_log_dir_sync, my_batch->TictocSequence);
       }
     } else {
       if (status.ok() && !write_options.disableWAL) {

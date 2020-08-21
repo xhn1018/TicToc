@@ -41,7 +41,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-
+#include<iostream>
 #include "db/column_family.h"
 #include "db/db_impl/db_impl.h"
 #include "db/dbformat.h"
@@ -1418,7 +1418,7 @@ class MemTableInserter : public WriteBatch::Handler {
       return seek_status;
     }
     Status ret_status;
-
+    
     MemTable* mem = cf_mems_->GetMemTable();
     auto* moptions = mem->GetImmutableMemTableOptions();
     // inplace_update_support is inconsistent with snapshots, and therefore with
@@ -1429,6 +1429,7 @@ class MemTableInserter : public WriteBatch::Handler {
           mem->Add(sequence_, value_type, key, value,
                    concurrent_memtable_writes_, get_post_process_info(mem),
                    hint_per_batch_ ? &GetHintMap()[mem] : nullptr);
+          //std::cout<<"1"<<std::endl;
       if (UNLIKELY(!mem_res)) {
         assert(seq_per_batch_);
         ret_status = Status::TryAgain("key+seq exists");

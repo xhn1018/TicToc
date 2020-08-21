@@ -63,7 +63,7 @@ class WriteBatch : public WriteBatchBase {
   explicit WriteBatch(size_t reserved_bytes = 0, size_t max_bytes = 0);
   explicit WriteBatch(size_t reserved_bytes, size_t max_bytes, size_t ts_sz);
   ~WriteBatch() override;
-
+  uint64_t TictocSequence;
   using WriteBatchBase::Put;
   // Store the mapping "key->value" in the database.
   Status Put(ColumnFamilyHandle* column_family, const Slice& key,
@@ -74,7 +74,7 @@ class WriteBatch : public WriteBatchBase {
 
   // Variant of Put() that gathers output like writev(2).  The key and value
   // that will be written to the database are concatenations of arrays of
-  // slices.
+  // slices.uence
   Status Put(ColumnFamilyHandle* column_family, const SliceParts& key,
              const SliceParts& value) override;
   Status Put(const SliceParts& key, const SliceParts& value) override {

@@ -83,6 +83,9 @@ class TransactionUtil {
   static Status CheckKeysForConflicts(DBImpl* db_impl,
                                       const TransactionKeyMap& keys,
                                       bool cache_only);
+  static Status CheckKeysForConflicts2(DBImpl* db_impl,
+                                      const TransactionKeyMap& keys,
+                                      bool cache_only,SequenceNumber s );
 
  private:
   // If `snap_checker` == nullptr, writes are always commited in sequence number
@@ -98,7 +101,7 @@ class TransactionUtil {
                          const std::string& key, bool cache_only,
                          ReadCallback* snap_checker = nullptr,
                          SequenceNumber min_uncommitted = kMaxSequenceNumber);
-    static Status CheckKey2(DBImpl* db_impl, SuperVersion* sv,
+  static Status CheckKey2(DBImpl* db_impl, SuperVersion* sv,
                          SequenceNumber earliest_seq, SequenceNumber snap_seq,
                          const std::string& key, bool cache_only,
                          
